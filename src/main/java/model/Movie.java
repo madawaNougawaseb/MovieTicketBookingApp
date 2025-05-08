@@ -22,14 +22,38 @@ public class Movie {
         this.releaseDate = releaseDate;
         this.posterUrl = posterUrl;
     }
+
     //getters
-    public int getMovieId() { return movieId; }
-    public String getTitle() { return title; }
-    public String getGenre() { return genre; }
-    public int getDuration() { return duration; }
-    public double getRating() { return rating; }
-    public String getDescription() { return description; }
-    public Date getReleaseDate() { return releaseDate; }
-    public String getPosterUrl() { return posterUrl; }
+    public int getMovieId() {
+        return movieId;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getGenre() {
+        return genre;
+    }
+
+    public int getDuration() {
+        return duration;
+    }
+
+    public double getRating() {
+        return rating;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Date getReleaseDate() {
+        return releaseDate;
+    }
+
+    public String getPosterUrl() {
+        return posterUrl;
+    }
 }
 
