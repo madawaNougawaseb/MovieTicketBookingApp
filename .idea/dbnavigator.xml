@@ -31,7 +31,7 @@
   <component name="DBNavigator.Project.DatabaseBrowserManager">
     <autoscroll-to-editor value="false" />
     <autoscroll-from-editor value="true" />
-    <show-object-properties value="true" />
+    <show-object-properties value="false" />
     <loaded-nodes />
   </component>
   <component name="DBNavigator.Project.DatabaseConsoleManager">
@@ -277,7 +277,262 @@ public class SeatSelectionFrame extends JFrame {
 }]]></console>
     </connection>
     <connection id="010ea58a-7600-4fb0-8be5-e33b965b4d26">
+      <console name="MovieBookingSystem" type="STANDARD" schema="mysql" session="Main"><![CDATA[-- Tables
+CREATE TABLE Users (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    user_type VARCHAR(20) CHECK (user_type IN ('customer', 'admin')) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE Movies (
+    movie_id INT PRIMARY KEY AUTO_INCREMENT,
+    title VARCHAR(255) NOT NULL,
+    genre VARCHAR(100) NOT NULL,
+    duration INT NOT NULL,
+    rating DECIMAL(2,1),
+    description TEXT,
+    release_date DATE NOT NULL,
+    poster_url VARCHAR(255)
+) ENGINE=InnoDB;
+
+CREATE TABLE Theatres (
+    theatre_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    location VARCHAR(255) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE Screens (
+    screen_id INT PRIMARY KEY AUTO_INCREMENT,
+    theatre_id INT,
+    screen_name VARCHAR(100) NOT NULL,
+    total_seats INT NOT NULL,
+    FOREIGN KEY (theatre_id) REFERENCES Theatres(theatre_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE Showtimes (
+    showtime_id INT PRIMARY KEY AUTO_INCREMENT,
+    movie_id INT,
+    screen_id INT,
+    start_time DATETIME NOT NULL,
+    FOREIGN KEY (movie_id) REFERENCES Movies(movie_id),
+    FOREIGN KEY (screen_id) REFERENCES Screens(screen_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE Seats (
+    seat_id INT PRIMARY KEY AUTO_INCREMENT,
+    screen_id INT,
+    seat_number VARCHAR(10) NOT NULL,
+    is_vip BOOLEAN NOT NULL DEFAULT FALSE,
+    FOREIGN KEY (screen_id) REFERENCES Screens(screen_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE Bookings (
+    booking_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT,
+    showtime_id INT,
+    seat_id INT,
+    status VARCHAR(20) CHECK (status IN ('pending', 'confirmed', 'cancelled')) NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES Users(user_id),
+    FOREIGN KEY (showtime_id) REFERENCES Showtimes(showtime_id),
+    FOREIGN KEY (seat_id) REFERENCES Seats(seat_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE Payments (
+    payment_id INT PRIMARY KEY AUTO_INCREMENT,
+    booking_id INT,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_date DATETIME NOT NULL,
+    payment_status VARCHAR(20) CHECK (payment_status IN ('pending', 'completed', 'failed')) NOT NULL,
+    FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE Tickets (
+    ticket_id INT PRIMARY KEY AUTO_INCREMENT,
+    booking_id INT,
+    seat_id INT,
+    price DECIMAL(10,2) NOT NULL,
+    issued_at DATETIME NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id),
+    FOREIGN KEY (seat_id) REFERENCES Seats(seat_id)
+) ENGINE=InnoDB;
+
+-- Stored Procedures
+DELIMITER $$
+CREATE PROCEDURE BookTicket(
+    IN p_user_id INT,
+    IN p_showtime_id INT,
+    IN p_seat_id INT,
+    IN p_amount DECIMAL(10,2)
+)
+BEGIN
+    DECLARE seat_status INT;
+
+    SELECT COUNT(*) INTO seat_status 
+    FROM Bookings 
+    WHERE seat_id = p_seat_id 
+      AND showtime_id = p_showtime_id 
+      AND status = 'confirmed';
+
+    IF seat_status = 0 THEN
+        INSERT INTO Bookings (user_id, showtime_id, seat_id, status)
+        VALUES (p_user_id, p_showtime_id, p_seat_id, 'confirmed');
+
+        INSERT INTO Payments (booking_id, amount, payment_date, payment_status)
+        VALUES (LAST_INSERT_ID(), p_amount, NOW(), 'pending');
+
+        INSERT INTO Tickets (booking_id, seat_id, price)
+        VALUES (LAST_INSERT_ID(), p_seat_id, p_amount);
+    ELSE
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Seat is already booked!';
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE CancelBooking(IN p_booking_id INT)
+BEGIN
+    UPDATE Bookings SET status = 'cancelled' WHERE booking_id = p_booking_id;
+    UPDATE Payments SET payment_status = 'failed' WHERE booking_id = p_booking_id;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE GetAvailableSeats(IN p_showtime_id INT)
+BEGIN
+    SELECT s.seat_id, s.seat_number, s.is_vip
+    FROM Seats s
+    LEFT JOIN Bookings b ON s.seat_id = b.seat_id 
+        AND b.showtime_id = p_showtime_id 
+        AND b.status = 'confirmed'
+    WHERE b.seat_id IS NULL;
+END$$
+DELIMITER ;
+
+-- Triggers
+DELIMITER $$
+CREATE TRIGGER PreventOverbooking
+AFTER INSERT ON Bookings
+FOR EACH ROW
+BEGIN
+    IF (SELECT COUNT(*) FROM Bookings 
+        WHERE seat_id = NEW.seat_id 
+          AND showtime_id = NEW.showtime_id) > 1 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Error: Seat already booked for this showtime!';
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER AutoCompletePayment
+AFTER UPDATE ON Bookings
+FOR EACH ROW
+BEGIN
+    IF OLD.status != NEW.status AND NEW.status = 'confirmed' THEN
+        UPDATE Payments
+        SET payment_status = 'completed'
+        WHERE booking_id = NEW.booking_id;
+    END IF;
+END$$
+DELIMITER ;
+
+CREATE TABLE TicketLogs (
+    log_id INT PRIMARY KEY AUTO_INCREMENT,
+    ticket_id INT,
+    booking_id INT,
+    issued_at DATETIME,
+    FOREIGN KEY (ticket_id) REFERENCES Tickets(ticket_id),
+    FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id)
+) ENGINE=InnoDB;
+
+DELIMITER $$
+CREATE TRIGGER LogTicketPurchase
+AFTER INSERT ON Tickets
+FOR EACH ROW
+BEGIN
+    INSERT INTO TicketLogs (ticket_id, booking_id, issued_at)
+    VALUES (NEW.ticket_id, NEW.booking_id, NEW.issued_at);
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE RegisterUser(
+    IN p_name VARCHAR(100),
+    IN p_email VARCHAR(255),
+    IN p_password VARCHAR(255),
+    IN p_phone VARCHAR(20),
+    IN p_user_type VARCHAR(20)
+)
+BEGIN
+    IF EXISTS (SELECT 1 FROM Users WHERE email = p_email) THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Email already exists!';
+    ELSE
+        INSERT INTO Users (name, email, password, phone, user_type)
+        VALUES (p_name, p_email, p_password, p_phone, p_user_type);
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE ProcessPayment(IN p_payment_id INT)
+BEGIN
+    UPDATE Payments SET payment_status = 'completed' WHERE payment_id = p_payment_id;
+    UPDATE Bookings SET status = 'confirmed' 
+    WHERE booking_id = (SELECT booking_id FROM Payments WHERE payment_id = p_payment_id);
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE GetUpcomingShowtimes()
+BEGIN
+    SELECT s.showtime_id, m.title, s.start_time, t.name AS theatre_name
+    FROM Showtimes s
+    JOIN Movies m ON s.movie_id = m.movie_id
+    JOIN Screens scr ON s.screen_id = scr.screen_id
+    JOIN Theatres t ON scr.theatre_id = t.theatre_id
+    WHERE s.start_time >= NOW() AND s.start_time <= DATE_ADD(NOW(), INTERVAL 7 DAY);
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER ValidatePaymentAmount
+BEFORE INSERT ON Payments
+FOR EACH ROW
+BEGIN
+    IF NEW.amount <= 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Payment amount must be greater than zero!';
+    END IF;
+END$$
+DELIMITER ;
+
+CREATE TABLE BookingCancellationLogs (
+    log_id INT PRIMARY KEY AUTO_INCREMENT,
+    booking_id INT,
+    cancelled_at DATETIME DEFAULT NOW(),
+    FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id)
+) ENGINE=InnoDB;
+
+DELIMITER $$
+CREATE TRIGGER LogBookingCancellation
+AFTER UPDATE ON Bookings
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'cancelled' THEN
+        INSERT INTO BookingCancellationLogs (booking_id)
+        VALUES (NEW.booking_id);
+    END IF;
+END$$
+DELIMITER ;]]></console>
       <console name="MovieTicketBooingApp" type="STANDARD" schema="mysql" session="Main" />
+    </connection>
+    <connection id="a2f85641-263d-4557-8ee3-bf784133b34f">
+      <console name="Connection" type="STANDARD" schema="" session="Main" />
     </connection>
   </component>
   <component name="DBNavigator.Project.DatabaseEditorStateManager">
@@ -289,12 +544,14 @@ public class SeatSelectionFrame extends JFrame {
   <component name="DBNavigator.Project.DatabaseSessionManager">
     <connection id="fbb19446-6fbd-40b0-b290-c62cbf4e83d7" />
     <connection id="010ea58a-7600-4fb0-8be5-e33b965b4d26" />
+    <connection id="a2f85641-263d-4557-8ee3-bf784133b34f" />
   </component>
   <component name="DBNavigator.Project.ExecutionManager">
     <retain-sticky-names value="false" />
   </component>
   <component name="DBNavigator.Project.FileConnectionMappingManager">
     <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/afd7c99b-8585-4e4b-8318-326321c75eac/console_2.sql" connection-id="010ea58a-7600-4fb0-8be5-e33b965b4d26" session-id="MAIN" current-schema="mysql" />
+    <mapping file-url="file://$USER_HOME$/OneDrive/Desktop/SQLQueryPRG2.sql" connection-id="010ea58a-7600-4fb0-8be5-e33b965b4d26" session-id="MAIN" current-schema="moviebookingapp" />
     <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/afd7c99b-8585-4e4b-8318-326321c75eac/console.sql" connection-id="010ea58a-7600-4fb0-8be5-e33b965b4d26" session-id="MAIN" current-schema="mysql" />
   </component>
   <component name="DBNavigator.Project.ObjectQuickFilterManager">
@@ -431,6 +688,103 @@ public class SeatSelectionFrame extends JFrame {
           <token-config-file value="" />
           <token-profile value="" />
           <session-user value="Madawa@localhost" />
+        </database>
+        <properties>
+          <auto-commit value="false" />
+        </properties>
+        <ssh-settings>
+          <active value="false" />
+          <proxy-host value="" />
+          <proxy-port value="22" />
+          <proxy-user value="" />
+          <auth-type value="PASSWORD" />
+          <key-file value="" />
+        </ssh-settings>
+        <ssl-settings>
+          <active value="false" />
+          <certificate-authority-file value="" />
+          <client-certificate-file value="" />
+          <client-key-file value="" />
+        </ssl-settings>
+        <details>
+          <charset value="UTF-8" />
+          <session-management value="true" />
+          <ddl-file-binding value="true" />
+          <database-logging value="true" />
+          <connect-automatically value="true" />
+          <restore-workspace value="true" />
+          <restore-workspace-deep value="false" />
+          <environment-type value="default" />
+          <connectivity-timeout value="30" />
+          <idle-time-to-disconnect value="30" />
+          <idle-time-to-disconnect-pool value="5" />
+          <credential-expiry-time value="10" />
+          <max-connection-pool-size value="7" />
+          <alternative-statement-delimiter value="" />
+        </details>
+        <debugger>
+          <compile-dependencies value="true" />
+          <tcp-driver-tunneling value="false" />
+          <tcp-host-address value="" />
+          <tcp-port-from value="4000" />
+          <tcp-port-to value="4999" />
+          <debugger-type value="ASK" />
+        </debugger>
+        <object-filters hide-empty-schemas="true" hide-pseudo-columns="false" hide-audit-columns="false">
+          <object-filters />
+          <object-type-filter use-master-settings="true">
+            <object-type name="SCHEMA" enabled="true" />
+            <object-type name="USER" enabled="true" />
+            <object-type name="ROLE" enabled="true" />
+            <object-type name="PRIVILEGE" enabled="true" />
+            <object-type name="CHARSET" enabled="true" />
+            <object-type name="TABLE" enabled="true" />
+            <object-type name="VIEW" enabled="true" />
+            <object-type name="MATERIALIZED_VIEW" enabled="true" />
+            <object-type name="NESTED_TABLE" enabled="true" />
+            <object-type name="COLUMN" enabled="true" />
+            <object-type name="INDEX" enabled="true" />
+            <object-type name="CONSTRAINT" enabled="true" />
+            <object-type name="DATASET_TRIGGER" enabled="true" />
+            <object-type name="DATABASE_TRIGGER" enabled="true" />
+            <object-type name="SYNONYM" enabled="true" />
+            <object-type name="SEQUENCE" enabled="true" />
+            <object-type name="PROCEDURE" enabled="true" />
+            <object-type name="FUNCTION" enabled="true" />
+            <object-type name="PACKAGE" enabled="true" />
+            <object-type name="TYPE" enabled="true" />
+            <object-type name="TYPE_ATTRIBUTE" enabled="true" />
+            <object-type name="ARGUMENT" enabled="true" />
+            <object-type name="JAVA_CLASS" enabled="true" />
+            <object-type name="JAVA_INNER_CLASS" enabled="true" />
+            <object-type name="JAVA_FIELD" enabled="true" />
+            <object-type name="JAVA_METHOD" enabled="true" />
+            <object-type name="DIMENSION" enabled="true" />
+            <object-type name="CLUSTER" enabled="true" />
+            <object-type name="DBLINK" enabled="true" />
+            <object-type name="CREDENTIAL" enabled="true" />
+            <object-type name="AI_PROFILE" enabled="true" />
+          </object-type-filter>
+        </object-filters>
+      </connection>
+      <connection id="a2f85641-263d-4557-8ee3-bf784133b34f" active="true" signed="true">
+        <database>
+          <name value="Connection" />
+          <description value="" />
+          <database-type value="GENERIC" />
+          <config-type value="CUSTOM" />
+          <database-version value="9999.0" />
+          <driver-source value="EXTERNAL" />
+          <driver-library value="C:\Users\madaw\Downloads\sqljdbc_12.10.0.0_enu\sqljdbc_12.10\enu\jars" />
+          <driver value="com.microsoft.sqlserver.jdbc.SQLServerDriver" />
+          <url-type value="CUSTOM" />
+          <url value="jdbc:generic://localhost:1234/database" />
+          <type value="NONE" />
+          <user value="" />
+          <token-type value="" />
+          <token-config-file value="" />
+          <token-profile value="" />
+          <session-user value="" />
         </database>
         <properties>
           <auto-commit value="false" />

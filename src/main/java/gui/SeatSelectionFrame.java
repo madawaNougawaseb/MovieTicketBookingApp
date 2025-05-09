@@ -19,18 +19,20 @@ public class SeatSelectionFrame extends JFrame {
     // Components
     private JPanel mainPanel, seatPanel, infoPanel, controlPanel;
     private JButton[][] seats;
-    private JButton btnConfirm, btnCancel, btnToBookingFrame;
+    private JButton btnConfirm, btnCancel, btnToPayment;
     private JLabel lblScreen, lblMovieInfo, lblTimeInfo, lblSelectedSeats, lblTotalPrice;
 
     // Data
     private boolean[][] bookedSeats;
     private List<String> selectedSeatsList;
     private double ticketPrice = 12.50;  // Default price
-    private String movieName = "Avengers: Endgame";
+    private String movieName;
     private String theaterName = "Cinema 3";
     private String showTime = "May 8, 2025 - 7:30 PM";
 
-    public SeatSelectionFrame() {
+    public SeatSelectionFrame(String movieName) {
+        this.movieName = movieName;
+
         // Set up the frame
         setTitle("Cinema System - Seat Selection");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -110,7 +112,7 @@ public class SeatSelectionFrame extends JFrame {
         // Create buttons
         btnConfirm = new JButton("Confirm Selection");
         btnCancel = new JButton("Cancel");
-        btnToBookingFrame = new JButton("Go to Booking Frame");
+        btnToPayment = new JButton("Proceed to Payment");
     }
 
     private void layoutComponents() {
@@ -130,7 +132,7 @@ public class SeatSelectionFrame extends JFrame {
         // Add buttons to control panel
         controlPanel.add(btnConfirm);
         controlPanel.add(btnCancel);
-        controlPanel.add(btnToBookingFrame);
+        controlPanel.add(btnToPayment);
 
         // Add screen to the top
         JPanel screenPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -188,11 +190,16 @@ public class SeatSelectionFrame extends JFrame {
         // Add action listener to cancel button
         btnCancel.addActionListener(e -> cancelBooking());
 
-        // Add action listener to navigate to BookingFrame
-        btnToBookingFrame.addActionListener(e -> {
-            BookingFrame bookingFrame = new BookingFrame();
-            bookingFrame.setVisible(true);
-            this.dispose(); // Close the current frame
+        // Add action listener to navigate to PaymentFrame
+        btnToPayment.addActionListener(e -> {
+            if (selectedSeatsList.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please select at least one seat.", "No Seats Selected", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            double total = selectedSeatsList.size() * ticketPrice;
+            String selectedSeats = String.join(", ", selectedSeatsList);
+            new PaymentFrame(selectedSeats, total).setVisible(true);
+            dispose();
         });
     }
 
@@ -270,12 +277,6 @@ public class SeatSelectionFrame extends JFrame {
     }
 
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        SwingUtilities.invokeLater(() -> new SeatSelectionFrame().setVisible(true));
+        SwingUtilities.invokeLater(() -> new SeatSelectionFrame("Sample Movie").setVisible(true));
     }
 }

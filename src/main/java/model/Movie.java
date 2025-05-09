@@ -1,59 +1,47 @@
 package model;
-import java.util.Date;
+
 public class Movie {
-    //fields
-    private int movieId;
     private String title;
-    private String genre;
-    private int duration;
-    private double rating;
-    private String description;
-    private Date releaseDate;
-    private String posterUrl;
+    private String ageRestriction;
+    private String duration;
+    private String posterPath;
 
-    //constructor
-    public Movie(int movieId, String title, String genre, int duration, double rating, String description, Date releaseDate, String posterUrl) {
-        this.movieId = movieId;
+    public Movie(String title, String ageRestriction, String duration, String posterPath) {
         this.title = title;
-        this.genre = genre;
+        this.ageRestriction = ageRestriction;
         this.duration = duration;
-        this.rating = rating;
-        this.description = description;
-        this.releaseDate = releaseDate;
-        this.posterUrl = posterUrl;
-    }
-
-    //getters
-    public int getMovieId() {
-        return movieId;
+        this.posterPath = posterPath;
     }
 
     public String getTitle() {
         return title;
     }
 
-    public String getGenre() {
-        return genre;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
-    public int getDuration() {
+    public String getAgeRestriction() {
+        return ageRestriction;
+    }
+
+    public void setAgeRestriction(String ageRestriction) {
+        this.ageRestriction = ageRestriction;
+    }
+
+    public String getDuration() {
         return duration;
     }
 
-    public double getRating() {
-        return rating;
+    public void setDuration(String duration) {
+        this.duration = duration;
     }
 
-    public String getDescription() {
-        return description;
+    public String getPosterPath() {
+        return posterPath;
     }
 
-    public Date getReleaseDate() {
-        return releaseDate;
-    }
-
-    public String getPosterUrl() {
-        return posterUrl;
+    public void setPosterPath(String posterPath) {
+        this.posterPath = posterPath;
     }
 }
-
